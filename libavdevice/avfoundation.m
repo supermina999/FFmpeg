@@ -151,6 +151,9 @@ static void unlock_frames(AVFContext* ctx)
   didOutputSampleBuffer:(CMSampleBufferRef)videoFrame
          fromConnection:(AVCaptureConnection *)connection;
 
+- (void)onSessionError:(NSNotification *)notification;
+
+
 @end
 
 @implementation AVFFrameReceiver
@@ -174,12 +177,21 @@ static void unlock_frames(AVFContext* ctx)
     }
 
     _context->current_frame = (CMSampleBufferRef)CFRetain(videoFrame);
+    ++_context->frames_captured;
 
     pthread_cond_signal(&_context->frame_wait_cond);
 
     unlock_frames(_context);
+}
 
-    ++_context->frames_captured;
+- (void)onSessionError:(NSNotification *)notification
+{
+    av_log(_context, AV_LOG_ERROR, "AVCaptureSession error occurred");
+    lock_frames(_context);
+    _context->frames_captured = -1;
+    unlock_frames(_context);
+    
+    pthread_cond_signal(&_context->frame_wait_cond);
 }
 
 @end
@@ -196,6 +208,8 @@ static void unlock_frames(AVFContext* ctx)
 - (void)  captureOutput:(AVCaptureOutput *)captureOutput
   didOutputSampleBuffer:(CMSampleBufferRef)audioFrame
          fromConnection:(AVCaptureConnection *)connection;
+
+- (void)onSessionError:(NSNotification *)notification;
 
 @end
 
@@ -220,12 +234,21 @@ static void unlock_frames(AVFContext* ctx)
     }
 
     _context->current_audio_frame = (CMSampleBufferRef)CFRetain(audioFrame);
+    ++_context->audio_frames_captured;
 
     pthread_cond_signal(&_context->frame_wait_cond);
 
     unlock_frames(_context);
+}
 
-    ++_context->audio_frames_captured;
+- (void)onSessionError:(NSNotification *)notification
+{
+    av_log(_context, AV_LOG_ERROR, "AVCaptureSession error occurred");
+    lock_frames(_context);
+    _context->audio_frames_captured = -1;
+    unlock_frames(_context);
+
+    pthread_cond_signal(&_context->frame_wait_cond);
 }
 
 @end
@@ -487,6 +510,8 @@ static int add_video_device(AVFormatContext *s, AVCaptureDevice *video_device)
         av_log(s, AV_LOG_ERROR, "can't add video output to capture session\n");
         return 1;
     }
+    
+    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionError:) name:AVCaptureSessionRuntimeErrorNotification object:ctx->capture_session];
 
     return 0;
 }
@@ -531,6 +556,8 @@ static int add_audio_device(AVFormatContext *s, AVCaptureDevice *audio_device)
         av_log(s, AV_LOG_ERROR, "adding audio output to capture session failed\n");
         return 1;
     }
+
+    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionError:) name:AVCaptureSessionRuntimeErrorNotification object:ctx->capture_session];
 
     return 0;
 }
@@ -999,6 +1026,11 @@ static int avf_read_packet(AVFormatContext *s, AVPacket *pkt)
         } else {
             pkt->data = NULL;
             pthread_cond_wait(&ctx->frame_wait_cond, &ctx->frame_lock);
+            if(ctx->frames_captured == -1 || ctx->audio_frames_captured == -1)
+            {
+                unlock_frames(ctx);
+                return -1;
+            }
         }
 
         unlock_frames(ctx);
