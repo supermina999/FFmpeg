@@ -151,7 +151,7 @@ static void unlock_frames(AVFContext* ctx)
   didOutputSampleBuffer:(CMSampleBufferRef)videoFrame
          fromConnection:(AVCaptureConnection *)connection;
 
-- (void)onSessionError:(NSNotification *)notification;
+- (void)onSessionStopped:(NSNotification *)notification;
 
 
 @end
@@ -184,7 +184,7 @@ static void unlock_frames(AVFContext* ctx)
     unlock_frames(_context);
 }
 
-- (void)onSessionError:(NSNotification *)notification
+- (void)onSessionStopped:(NSNotification *)notification
 {
     av_log(_context, AV_LOG_ERROR, "AVCaptureSession error occurred");
     lock_frames(_context);
@@ -209,7 +209,7 @@ static void unlock_frames(AVFContext* ctx)
   didOutputSampleBuffer:(CMSampleBufferRef)audioFrame
          fromConnection:(AVCaptureConnection *)connection;
 
-- (void)onSessionError:(NSNotification *)notification;
+- (void)onSessionStopped:(NSNotification *)notification;
 
 @end
 
@@ -241,7 +241,7 @@ static void unlock_frames(AVFContext* ctx)
     unlock_frames(_context);
 }
 
-- (void)onSessionError:(NSNotification *)notification
+- (void)onSessionStopped:(NSNotification *)notification
 {
     av_log(_context, AV_LOG_ERROR, "AVCaptureSession error occurred");
     lock_frames(_context);
@@ -511,7 +511,8 @@ static int add_video_device(AVFormatContext *s, AVCaptureDevice *video_device)
         return 1;
     }
     
-    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionError:) name:AVCaptureSessionRuntimeErrorNotification object:ctx->capture_session];
+    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionStopped:) name:AVCaptureSessionRuntimeErrorNotification object:ctx->capture_session];
+    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionStopped:) name:AVCaptureSessionDidStopRunningNotification object:ctx->capture_session];
 
     return 0;
 }
@@ -557,7 +558,8 @@ static int add_audio_device(AVFormatContext *s, AVCaptureDevice *audio_device)
         return 1;
     }
 
-    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionError:) name:AVCaptureSessionRuntimeErrorNotification object:ctx->capture_session];
+    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionStopped:) name:AVCaptureSessionRuntimeErrorNotification object:ctx->capture_session];
+    [[NSNotificationCenter defaultCenter] addObserver:ctx->avf_delegate selector:@selector(onSessionStopped:) name:AVCaptureSessionDidStopRunningNotification object:ctx->capture_session];
 
     return 0;
 }
